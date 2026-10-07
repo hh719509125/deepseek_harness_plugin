@@ -1,0 +1,4 @@
+{
+  "title": "GitHub Connector",
+  "description": "Read-only GitHub access over a Personal Access Token: repository and code search, file contents, issues and pull requests."
+}

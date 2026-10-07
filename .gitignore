@@ -1,0 +1,9 @@
+# 忽略第三方 TLS 中间人根证书：它属于某个本机加速工具，只在本机有意义。
+# 公开仓库里带上它，等于让每个安装者都默认信任这枚 CA。
+steampp-ca.pem
+
+# 运行期与开发期产物
+node_modules/
+*.log
+.DS_Store
+Thumbs.db

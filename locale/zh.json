@@ -1,0 +1,4 @@
+{
+  "title": "GitHub 连接器",
+  "description": "用 Personal Access Token 只读访问 GitHub：仓库与代码搜索、读取文件、查看 Issue 与 PR。"
+}

@@ -1,0 +1,41 @@
+{
+  "name": "@local/dsh-plugin-github",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only GitHub REST tools (github_api, github_search, github_file, github_issues) authenticated with a Personal Access Token.",
+  "license": "MIT",
+  "icon": "./icon.svg",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale/*.json",
+    "README.md"
+  ],
+  "meta": {
+    "title": "GitHub 连接器",
+    "description": "用 Personal Access Token 只读访问 GitHub：仓库与代码搜索、读取文件、查看 Issue 与 PR。"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
+    }
+  }
+}
