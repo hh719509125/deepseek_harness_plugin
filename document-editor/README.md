@@ -8,6 +8,52 @@
 
 ---
 
+## English
+
+**Edit text documents in place in the DSH Sidebar document preview.**
+
+DSH's shipped document preview is read-only by design — its own README lists *"Preview, not editing"* as a deliberate limitation — and the workspace-files Remote exposes no mutation operation at all. This plugin adds that missing write path and registers the editor as one of the preview's own renderers, so no built-in renderer is replaced.
+
+**Install** — ask your DSH agent, then reload the page once:
+
+```
+plugin_manager { action: "install_bundle", target: "github:hh719509125/deepseek_harness_plugin#path:/document-editor" }
+```
+
+**Use**
+
+1. **Open a file.** Press `Ctrl+P` in the right Sidebar to open the file tree and click a `.txt`, code or `.json` file — or open it from a file reference in the conversation, or from a delivered-file card.
+2. **Type.** Files with those extensions open **as this editor** instead of the read-only preview.
+3. **Save** with `Ctrl+S`, or the Save button on the toolbar.
+4. To go back to the read-only view, choose **Plain text** in the renderer dropdown.
+
+The toolbar shows the state at a glance:
+
+| Indicator | Meaning |
+|---|---|
+| green dot · Saved | buffer matches disk |
+| yellow dot · Unsaved changes | not written yet; closing the tab or the page warns first |
+| Saving… | the write is in flight |
+
+`Tab` indents two spaces. **`.md` keeps its rendered Markdown by default** — the editor is offered as *Edit source* in the renderer dropdown, so the preview is never taken away.
+
+**Behaviour worth knowing**
+
+| Situation | What happens |
+|---|---|
+| The file changed on disk before you save | A "changed on disk, nothing overwritten" prompt offers **Overwrite with mine** or **Discard mine and reload**. It never overwrites silently |
+| The file changes while you are editing | A "load disk version" notice appears; your buffer is **never replaced behind your back** |
+| The file was deleted | The save returns 404 and says so — it does **not** recreate the file |
+| The file is larger than one preview page | Saving is **disabled** with an explanation: the preview reads one page at a time, so writing back would truncate the rest |
+| The file is outside the session workspace | Readable, but the write is refused by the sandbox unless that session is `danger-full-access` |
+| `.docx` / `.xlsx` / `.pptx` | Not applicable — those preview as converted PDF, and the browser has no editable document model |
+
+**Compatibility.** Built and verified against DSH `0.2.0-rc.2`. It depends on two internal DSH contracts — Connection's exact `/api` Fetch route and the preview's `documentPreviews` renderer registry — which are not promised to be stable across release candidates. If the *Edit* renderer never appears, check the DSH version first.
+
+The rest of this document is in Chinese and goes deeper: how the write path is authenticated, every configuration field, and implementation notes.
+
+---
+
 ## 使用
 
 还没装？见下面的[安装](#安装)。

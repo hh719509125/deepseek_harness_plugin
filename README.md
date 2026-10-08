@@ -1,8 +1,62 @@
-# DeepSeek Harness 插件集
+# DeepSeek Harness Plugins
 
-给 [DeepSeek Harness](https://github.com/hh719509125)（DSH）用的插件集合。每个子目录都是一个**独立、可单独安装**的 DSH 组合包（bundle）：一个普通目录，靠 `package.json` 里的 `dsh.bundle.patch` 声明要插入的组合行。**不需要发布到 npm，也不用手改 profile 的 `package.json`。**
+**English** · [中文说明](#中文说明)
 
-## 快速上手
+Plugins for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH). Each subdirectory is a self-contained DSH bundle — a plain directory whose `package.json` declares the composition rows it inserts through `dsh.bundle.patch`. Installing one needs **no npm publish and no manual profile editing**.
+
+| Plugin | What it does |
+|---|---|
+| [`document-editor/`](document-editor/) | **Edit text documents in place** in the Sidebar document preview — save/revert, `Ctrl+S`, conflict protection, line-ending preservation. DSH's shipped preview is read-only by design and the workspace-files Remote exposes no mutation operation, so this plugin adds the missing write path and registers an editable renderer beside the built-in viewers. |
+| [`github-connector/`](github-connector/) | **Read-only GitHub tools** — `github_api`, `github_search`, `github_file`, `github_issues` — authenticated with a Personal Access Token, plus a token settings page. |
+
+## Install
+
+Ask your DSH agent to install straight from this repository:
+
+```
+plugin_manager { action: "install_bundle", target: "github:hh719509125/deepseek_harness_plugin#path:/document-editor" }
+```
+
+`#path:/<subdirectory>` is pnpm's git-subdirectory spec, so nothing goes to npm and nothing is cloned by hand. Swap `/document-editor` for `/github-connector` to install the other one; both can live side by side. `"application": "applied"` means it took — then **reload the page once**, because the browser half loads with the page.
+
+**Pin a version** by putting the ref before `&path:`:
+
+| Goal | Spec |
+|---|---|
+| Track latest | `…#path:/document-editor` |
+| Pin a release | `…#v1.0.0&path:/document-editor` |
+| Pin a commit | `…#<full 40-character SHA>&path:/document-editor` |
+
+The ref must come first — `#path:/…&tag=…` fails outright — and an abbreviated SHA does not resolve, because `git ls-remote` never returns one.
+
+**Permission.** Every `plugin_manager` action needs `danger-full-access` or a per-call approval. Installed Host code runs in-process as your user, outside the workspace sandbox — the same trust level as running bash inside Harness. Read the source before installing.
+
+Usage, configuration and limitations live in each plugin's own `README.md`.
+
+## Compatibility
+
+Built and verified against **DeepSeek Harness `0.2.0-rc.2`**. `document-editor` depends on two internal DSH contracts — Connection's exact `/api` Fetch route and the preview's `documentPreviews` renderer registry — and those are not promised to be stable across release candidates. Neither plugin declares `peerDependencies` on purpose: the official packages peer on `@deepseek-ai/cordis`, and a wrong range makes the plugin manager **refuse the install up front**, which is harder to diagnose than a runtime error. If a tool or renderer does not show up, check the DSH version first.
+
+## Layout
+
+```
+.
+├── .gitattributes          # stored as LF
+├── .gitignore
+├── LICENSE                 # MIT, covers the whole repository
+├── document-editor/        # one complete plugin package
+└── github-connector/       # one complete plugin package
+```
+
+Each plugin directory is self-contained — `package.json`, Host half, Client half, `cordis.patch.yml`, locale files, icon, and its own `LICENSE` — so a directory copied on its own still installs.
+
+---
+
+## 中文说明
+
+给 DeepSeek Harness（DSH）用的插件集合。每个子目录都是一个**独立、可单独安装**的 DSH 组合包（bundle）：一个普通目录，靠 `package.json` 里的 `dsh.bundle.patch` 声明要插入的组合行。**不需要发布到 npm，也不用手改 profile 的 `package.json`。**
+
+### 快速上手
 
 前提：DSH 已经装好、能打开界面。
 
@@ -25,7 +79,7 @@
 
    细节、配置项和边界都在各插件目录的 `README.md` 里。
 
-## 插件
+### 插件
 
 | 插件 | 目录 | 作用 |
 |---|---|---|
@@ -34,7 +88,7 @@
 
 各自的说明、配置项和边界都写在插件目录的 `README.md` 里。
 
-## 安装
+### 安装
 
 插件由 **agent** 安装（`plugin_manager` 是 agent 工具，用户不直接调用）。把下面这条**规格**发给你的 DSH agent 即可：
 
@@ -49,7 +103,7 @@ plugin_manager { action: "install_bundle", target: "github:hh719509125/deepseek_
 
 `#path:/<子目录>` 是 pnpm 的 git 子目录规格，所以**不需要发布到 npm**，也不需要手动克隆。
 
-### 锁定版本
+#### 锁定版本
 
 上面的规格跟踪 `main`。要钉住某个版本，把 ref 放在 `#` 后面、`&path:` **之前**：
 
@@ -81,7 +135,7 @@ plugin_manager { action: "install_bundle", target: "<克隆路径>/document-edit
 
 > ⚠️ 安装用的是 pnpm 的 `link:`（路径装法）或 git 依赖（规格装法）。**路径装法**下 profile 只记录路径、不复制文件，所以装好之后不要移动或删除那个目录。
 
-## 兼容性
+### 兼容性
 
 这些插件是为 **DeepSeek Harness `0.2.0-rc.2`** 开发和验证的，并且依赖 DSH 的两处内部约定：
 
@@ -90,7 +144,7 @@ plugin_manager { action: "install_bundle", target: "<克隆路径>/document-edit
 
 DSH 仍在 rc 阶段，这些内部约定**不承诺跨版本稳定**。插件刻意没有声明 `peerDependencies`——官方包声明的是 `@deepseek-ai/cordis`，而声明错的 peer 会让插件管理器**在安装前就拒绝**，那比装完再报错更难排查。所以：装完如果某个工具/渲染器不出现，先确认 DSH 版本。
 
-## 目录结构
+### 目录结构
 
 ```
 .
@@ -103,7 +157,7 @@ DSH 仍在 rc 阶段，这些内部约定**不承诺跨版本稳定**。插件�
 
 每个插件目录都是自包含的：`package.json`、Host 半边、Client 半边、`cordis.patch.yml`、locale、图标，以及自己那份 `LICENSE`。所以从仓库里单独拷一个目录出去也能直接装。
 
-## 开发提示
+### 开发提示
 
 - **机器相关配置放 profile 层，别写进插件包。** 插件包自带的 `cordis.patch.yml` 会应用到**每一个**安装它的 profile，所以绝对路径、本机证书这类东西要写到 `<DSH_HOME>/profiles/<profile>/cordis.patch.yml`——它优先级高于所有 bundle 层，而且不会被发布出去。热重载的 `hmr.root` 就是这么配的，见各插件 README 的「开发」一节。
 - **热重载**：Host 半边（`index.js`）改完自动热重载，不用重启；Client 半边（`client.js`）属于浏览器侧，改完刷新页面即可。

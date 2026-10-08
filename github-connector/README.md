@@ -3,6 +3,49 @@
 给 DeepSeek Harness 增加四个**只读** GitHub 工具，用 Personal Access Token（PAT）认证。
 所有请求都是 `GET`，插件只读取，不修改 GitHub 上的任何内容。
 
+---
+
+## English
+
+**Read-only GitHub tools for DeepSeek Harness**, authenticated with a Personal Access Token. Every request is a `GET`: the plugin only reads, and never modifies anything on GitHub.
+
+| Tool | Purpose |
+|---|---|
+| `github_api` | Generic read-only entry point — any `GET` path plus query values, returning the status and the JSON or text body |
+| `github_search` | Search repositories, code, issues or users, projected into a compact list |
+| `github_file` | Read one file's UTF-8 content from a repository, or list a directory |
+| `github_issues` | List a repository's issues or pull requests (state, labels, limit) |
+
+**Install** — ask your DSH agent, then reload the page once:
+
+```
+plugin_manager { action: "install_bundle", target: "github:hh719509125/deepseek_harness_plugin#path:/github-connector" }
+```
+
+**Configure the token** — open **Settings → GitHub**, paste a Personal Access Token and press *Test and save*. The page verifies the token against `api.github.com` first and stores it only once GitHub accepts it, so a rejected token is never saved. No restart needed.
+
+Alternatively, write the credential file directly (it is hot-reloaded too):
+
+```yaml
+# %USERPROFILE%\.dsh\.credentials.yaml      (or <DSH_HOME>/.credentials.yaml)
+version: 1
+refs:
+  GITHUB_TOKEN: ghp_your_token
+```
+
+The token never appears in the plugin's own configuration — that holds only the *reference name*. Scopes: default permissions are enough for public data; private repositories need the classic `repo` scope, or a fine-grained token with `Contents: Read`, `Issues: Read`, `Pull requests: Read`, `Metadata: Read`. Note that unauthenticated access to a private repository returns **404 rather than 403**, so a 404 usually means the token is missing or under-scoped.
+
+**Use** — just ask the agent:
+
+- *"Use `github_api` on `/rate_limit`"* — confirm the token works and see the remaining quota
+- *"`github_search` for `language:rust stars:>5000` repositories"*
+- *"`github_file` read `owner/repo` at `src/index.ts`"*
+- *"`github_issues` list `owner/repo` open pull requests"*
+
+**Compatibility.** Built and verified against DSH `0.2.0-rc.2`. The rest of this document is in Chinese and goes deeper: the settings page internals, every configuration field, and the author's local network notes.
+
+---
+
 ## 快速上手
 
 1. **装**：把这条规格发给你的 DSH agent（插件由 agent 安装，用户不直接调用 `plugin_manager`）：
