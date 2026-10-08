@@ -26,6 +26,22 @@ plugin_manager { action: "install_bundle", target: "github:hh719509125/deepseek_
 
 `#path:/<子目录>` 是 pnpm 的 git 子目录规格，所以**不需要发布到 npm**，也不需要手动克隆。
 
+### 锁定版本
+
+上面的规格跟踪 `main`。要钉住某个版本，把 ref 放在 `#` 后面、`&path:` **之前**：
+
+| 目的 | 规格 |
+|---|---|
+| 跟踪最新 | `github:hh719509125/deepseek_harness_plugin#path:/document-editor` |
+| 钉到某个 release | `github:hh719509125/deepseek_harness_plugin#v1.0.0&path:/document-editor` |
+| 钉到确切提交 | `github:hh719509125/deepseek_harness_plugin#<完整 40 位 commit SHA>&path:/document-editor` |
+
+三点是实测出来的，容易踩：
+
+- **ref 必须在前面**。`#path:/document-editor&tag=v1.0.0` 这种写法**无效**（安装直接失败）。
+- **必须用完整的 40 位 SHA**。短 SHA 解析不了——`git ls-remote` 不返回缩写 SHA。
+- 分支、标签、完整 SHA 三种都可以；pnpm 最后都会把解析结果写进 lockfile（`…git#<commit>&path:/document-editor`），所以 `main` 也会被锁到当时的提交。
+
 agent 会依次：从 GitHub 取包 → 作为依赖写进 profile 的 `package.json` → 在 profile 目录里运行 `pnpm` → 把包名加入 `dsh.profile.bundles` → 应用组合包自带的 patch 行。返回 `"application": "applied"` 即为生效。
 
 两点注意：
