@@ -2,6 +2,29 @@
 
 给 [DeepSeek Harness](https://github.com/hh719509125)（DSH）用的插件集合。每个子目录都是一个**独立、可单独安装**的 DSH 组合包（bundle）：一个普通目录，靠 `package.json` 里的 `dsh.bundle.patch` 声明要插入的组合行。**不需要发布到 npm，也不用手改 profile 的 `package.json`。**
 
+## 快速上手
+
+前提：DSH 已经装好、能打开界面。
+
+1. **装** —— 把下面这条规格发给你的 DSH agent（插件由 agent 安装，用户不直接调用 `plugin_manager`）：
+
+   ```
+   plugin_manager { action: "install_bundle", target: "github:hh719509125/deepseek_harness_plugin#path:/document-editor" }
+   ```
+
+   把结尾的 `/document-editor` 换成 `/github-connector` 就装另一个。两个可以都装。返回 `"application": "applied"` 即成功。
+
+2. **刷新一次页面** —— 安装对 Host 是热生效的，但浏览器侧要重新加载一次才会出现插件贡献的界面。
+
+3. **用**：
+
+   | 插件 | 装完怎么用 |
+   |---|---|
+   | 文档编辑 | 右侧栏按 `Ctrl+P` 打开文件树，点一个 `.txt` / 代码 / `.json` 文件 → **打开就是编辑器**，改完 `Ctrl+S` |
+   | GitHub 连接器 | **设置 → GitHub** 页粘贴 Personal Access Token，点「测试并保存」；之后直接让 agent 用它查 GitHub |
+
+   细节、配置项和边界都在各插件目录的 `README.md` 里。
+
 ## 插件
 
 | 插件 | 目录 | 作用 |

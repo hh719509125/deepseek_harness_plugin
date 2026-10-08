@@ -3,6 +3,28 @@
 给 DeepSeek Harness 增加四个**只读** GitHub 工具，用 Personal Access Token（PAT）认证。
 所有请求都是 `GET`，插件只读取，不修改 GitHub 上的任何内容。
 
+## 快速上手
+
+1. **装**：把这条规格发给你的 DSH agent（插件由 agent 安装，用户不直接调用 `plugin_manager`）：
+
+   ```
+   plugin_manager { action: "install_bundle", target: "github:hh719509125/deepseek_harness_plugin#path:/github-connector" }
+   ```
+
+   返回 `"application": "applied"` 即成功。然后**刷新一次页面**。
+
+2. **配令牌**：打开 **设置 → GitHub**，粘贴 PAT，点「测试并保存」。页面会先拿令牌去 GitHub 验证，
+   通过后才写入凭据存储（免重启）。细节见 [配置令牌](#配置令牌必做)。
+
+3. **用**：直接让 agent 去查就行，例如
+
+   - 「用 `github_api` 看 `/rate_limit`」——确认令牌生效、还剩多少配额
+   - 「`github_search` 搜 `language:rust stars:>5000` 的仓库」
+   - 「`github_file` 读 `owner/repo` 的 `src/index.ts`」
+   - 「`github_issues` 列 `owner/repo` 现在开着的 PR」
+
+四个工具的参数见下一节。装上之后**不需要重启 DSH**。
+
 ## 工具
 
 | 工具 | 作用 |
@@ -21,10 +43,13 @@
 
 ## 配置令牌（必做）
 
-令牌**不出现在配置文件里**，配置只保存“引用名”。解析优先级由 DSH 凭据服务决定：
-**启动环境 > 凭据存储文件 > 项目 `.env` > harness home 的 `.env`**。
+**推荐：设置 → GitHub 页**（下一节有详细说明）。粘贴令牌、点「测试并保存」——它会先拿令牌去
+GitHub 验证，通过后才写进凭据存储，**免重启**；被拒绝的令牌不会被保存。
 
-推荐用凭据存储（免重启）：编辑 `C:\Users\Allen.hu\.dsh\.credentials.yaml`，在 `refs:` 下加一行：
+**备选：直接写凭据文件**（同样免重启，该文件被监听并热重载）：
+
+- Windows：`%USERPROFILE%\.dsh\.credentials.yaml`
+- 其他平台：`<DSH_HOME>/.credentials.yaml`
 
 ```yaml
 version: 1
@@ -32,17 +57,15 @@ refs:
   GITHUB_TOKEN: ghp_你的令牌
 ```
 
-该文件会被自动监听并热重载，保存后下一次工具调用即生效。
+令牌**不出现在插件的配置里**——配置只保存「引用名」（默认 `GITHUB_TOKEN`）。解析优先级由 DSH 凭据服务决定：
+**启动环境 > 凭据存储文件 > 项目 `.env` > harness home 的 `.env`**。插件按 `tokenEnv` → `GITHUB_TOKEN`
+→ `GH_TOKEN` 的顺序解析，都没找到时直接报错并说明去哪里配，不会发出未认证请求。
 
-其他两种方式都需要**重启 DSH**：把 `GITHUB_TOKEN=…` 写进 `C:\Users\Allen.hu\.dsh\.env`，
-或在启动前设为进程环境变量（启动环境是启动瞬间的快照，运行中新增或修改都读不到——已实测）。
+后两种方式（进程环境变量 / `.env` 文件）需要**重启 DSH**：启动环境是启动瞬间的快照，运行中新增或修改都读不到（已实测）。
 
-插件按 `tokenEnv` → `GITHUB_TOKEN` → `GH_TOKEN` 的顺序解析；都没找到时直接报错并说明去哪里配，
-不会发出未认证请求。
-
-PAT 权限：读公开数据用默认权限即可；读私有仓库需要 `repo` 范围（细粒度令牌给
-`Contents: Read`、`Issues: Read`、`Pull requests: Read`、`Metadata: Read`）。
-**注意**：未认证访问私有仓库时 GitHub 返回的是 `404` 而不是 `403`，所以“404”通常意味着令牌没配上或权限不足。
+**PAT 权限**：读公开数据用默认权限即可；读私有仓库需要 classic 令牌的 `repo` 范围，或细粒度令牌的
+`Contents: Read`、`Issues: Read`、`Pull requests: Read`、`Metadata: Read`。
+**注意**：未认证访问私有仓库时 GitHub 返回的是 `404` 而不是 `403`，所以「404」通常意味着令牌没配上或权限不足。
 
 ## 在界面里操作（设置 → GitHub）
 
@@ -67,51 +90,53 @@ PAT 权限：读公开数据用默认权限即可；读私有仓库需要 `repo`
 - 文案走 `ctx.locale`，注册 `settings.github` 命名空间，中英各一份。
 - 监听 `credentials/reference-updated`：令牌若从别处被改动，页面上的状态会跟着刷新。
 
-注意：这一页验证的是**令牌本身**。Agent 工具能否访问 GitHub，还取决于 Host 进程是否信任加速器证书 —— 也就是 `caFile`。
+注意：这一页验证的是**令牌本身**。Agent 工具能否访问 GitHub，还取决于 Host 进程是否信任你网络的证书 —— 见下一节。
 
-## 本机网络：必须保留 `caFile`
+## 只在本机需要时的两项配置（默认都不用配）
 
-这台机器把 `github.com`、`api.github.com` 等一大批域名在 hosts 里指向 `127.0.0.1`，
-由 **Steam++.Accelerator（瓦特工具箱）** 在本地 443 端口做 TLS 中间人加速。
-Windows 信任它的证书，但 **Node 只用自带根证书库**，所以 `fetch` 会直接失败：
+插件包自带的 `cordis.patch.yml` **刻意不含任何本机路径**：bundle patch 会应用到每个安装它的
+profile，一条绝对路径或一份本机证书会跟着跑到别人机器上。所以下面两项都默认关闭，需要时写到
+**你自己 profile 的 patch 层**——`<DSH_HOME>/profiles/<profile>/cordis.patch.yml`，它的优先级高于所有
+bundle 层，而且不会被发布出去：
+
+```yaml
+- id: github-connector
+  config:
+    caFile: /绝对/路径/your-ca.pem     # 只有走 TLS 中间人代理时才需要
+- id: hmr
+  name: '@deepseek-ai/dsh-hmr'
+  config:
+    root: ['.', '/你的插件目录/github-connector']   # 只有改源码要热重载时才需要
+```
+
+### `caFile`：网络走 TLS 中间人代理时才需要
+
+如果你的网络把 `github.com` / `api.github.com` 在 hosts 里指向 `127.0.0.1`，由某个本地加速器
+（例如 **Steam++.Accelerator / 瓦特工具箱**）在 443 端口做 TLS 中间人加速，那么 Windows 信任它的证书、
+但 **Node 只用自带根证书库**，`fetch` 会直接失败：
 
 ```
 TypeError: fetch failed — UNABLE_TO_VERIFY_LEAF_SIGNATURE
 ```
 
-解决办法就是本插件默认开启的 `caFile: ./steampp-ca.pem`（包内已附带该 CA，导出自
-Windows 根证书库里的 `CN=SteamTools Certificate`，`O=BeyondDimension`）。
-它在插件激活时把这枚 CA 追加到本进程的默认信任列表（等价于 `NODE_EXTRA_CA_CERTS`），幂等，
-热重载不会重复追加。
+判断方法：`Resolve-DnsName api.github.com` 返回 `127.0.0.1` 就是这种环境。
 
-宿主运行时已确认支持该 API：DSH 桌面端是 **Electron 44.0.0（内置 Node 24.18.1）**，
-`resources/runtime/versions.json` 声明随附运行时为 Node 24.18.1（实际 `node.exe` 为 24.21.0），
-`tls.setDefaultCACertificates` 在两者的存在性都已实测。
+这时把加速器的 CA 导出成 PEM，配上 `caFile`（绝对路径）。插件激活时会把这枚 CA 追加到本进程的
+默认信任列表（等价于 `NODE_EXTRA_CA_CERTS`），幂等，热重载不会重复追加。也可以用环境变量替代：
+启动 DSH 前设 `NODE_EXTRA_CA_CERTS=<你的 PEM>`。
 
-- 如果以后关掉加速器、恢复直连：把 `caFile` 那行删掉即可（直连时不需要额外 CA）。
-- 如果你更想用环境变量：启动 DSH 前设 `NODE_EXTRA_CA_CERTS=C:\Users\Allen.hu\.dsh\profiles\desktop\node_modules\@local\dsh-plugin-github\steampp-ca.pem`，
-  然后删掉 `caFile` 配置。
-- 副作用说明：这枚 CA 会被本进程的所有 TLS 连接信任，而不只是 GitHub 请求。它本来就已经被 Windows 全局信任，所以并没有新增暴露面，但值得知道。
+- **普通直连网络：什么都不用配。**
+- 指向不存在的文件不会让插件崩溃：加载时记一条警告，随后请求会因证书不受信而失败。
+- 副作用说明：这枚 CA 会被本进程的所有 TLS 连接信任，而不只是 GitHub 请求。
 
-## 本机 git 访问 GitHub（已配置）
+### `hmr.root`：只有改这个插件的源码时才需要
 
-22 端口在本网络被封，且 hosts 把 `github.com` 指向 `127.0.0.1`，所以 git 走 SSH 默认端口必然连到本机而失败。
-已生成一把 ed25519 密钥，并让 SSH 改走 GitHub 的 443 备用入口：
-
-- 私钥：`C:\Users\Allen.hu\.ssh\id_ed25519`（**无口令**，便于免交互；需要更安全时可加口令并配 ssh-agent）
-- `~/.ssh/config`：`Host github.com` → `HostName ssh.github.com` / `Port 443` / `IdentityFile ~/.ssh/id_ed25519`
-  （`HostName` 会覆盖解析目标，因此同时绕开 22 端口封锁和 hosts 劫持）
-- 公钥指纹 `SHA256:bkSQYIEYm1lOKYQwuOC+hjBsufHypBkmuLbzwvM0YtE`，已添加到 GitHub
-
-实测结果：`ssh -T git@github.com` 返回 `Hi hh719509125! You've successfully authenticated…`；
-`git ls-remote git@github.com:hh719509125/Skills.git` 列出 `refs/heads/main`（`b8d1283`）。
-
-**SSH key 与 PAT 不能互换**：`api.github.com` 是 HTTPS REST 接口，只接受 token；
-SSH key 只在 git 的 SSH 传输层生效。所以这套配置解决的是 clone/pull/push，插件仍需 PAT。
+加上你放置该插件的绝对路径即可让改动热重载，而不是每次重启进程。
 
 ## 配置项
 
-在 profile 的 `cordis.patch.yml` 里按 `id: github-connector` 覆盖，或直接改本包的 `cordis.patch.yml`：
+在 **profile 层**（`<DSH_HOME>/profiles/<profile>/cordis.patch.yml`）按 `id: github-connector` 覆盖。
+装到多个 profile 时每处各自生效；不要改本包自带的 `cordis.patch.yml`——那会跟着发布出去。
 
 | 字段 | 默认值 | 说明 |
 |---|---|---|
@@ -119,17 +144,27 @@ SSH key 只在 git 的 SSH 传输层生效。所以这套配置解决的是 clon
 | `apiBaseUrl` | `https://api.github.com` | GitHub Enterprise 改成 `https://<host>/api/v3` |
 | `timeoutMs` | `30000` | 单次请求超时（毫秒） |
 | `maxOutputChars` | `60000` | 单次结果返回给模型的字符上限 |
-| `caFile` | `./steampp-ca.pem` | 额外信任的 PEM 证书文件；相对路径基于插件目录。留空即不追加 |
+| `caFile` | 不设（不追加） | 额外信任的 PEM 证书文件；只在网络走 TLS 中间人代理时需要。相对路径基于插件目录，建议写绝对路径 |
 
 ## 安装与卸载
 
-已安装到 `desktop` profile，pnpm 记录为 `link:F:/插件/github-connector`，
-并已加入 `dsh.profile.bundles`。
+**别人安装**（不需要克隆、不需要 npm）：
+
+```
+plugin_manager { action: "install_bundle", target: "github:hh719509125/deepseek_harness_plugin#path:/github-connector" }
+```
+
+想锁版本就把 ref 放在 `#` 后、`&path:` 前，例如 `#v1.0.0&path:/github-connector`
+（**必须用完整 40 位 SHA**；`#path:…&tag=…` 这种写法无效）。
+
+**本地开发安装**（作者本机就是这样，pnpm 记录为 `link:F:/插件/github-connector`）：
 
 - 首次安装：`plugin_manager { action: "install_bundle", target: "F:\\插件\\github-connector" }`
 - 修改代码或配置后重新生效：`set_plugin` 目标填入口 id `include:github-connector`，先 `enabled: false` 再 `enabled: true`
   （用 `install_bundle` 重复安装同一路径会报 `ambiguous-install`：包已存在、依赖未变化，工具无法唯一定位。）
 - 卸载：`remove_bundle`，目标填 `@local/dsh-plugin-github`
+
+> 装完**刷新一次页面**：Host 侧是热应用的，但浏览器侧（设置里的 GitHub 页）要重新加载才会出现。
 
 ## 设计说明
 
@@ -225,3 +260,20 @@ Start-Process "DeepSeek Harness.exe"   # 或从开始菜单打开
 **git 侧**
 
 - SSH over 443 打通：`ssh -T` 认证成功，`git ls-remote` 可读私有仓库与目标仓库 ✅
+
+---
+
+## 附录：作者本机环境记录
+
+> 这一节只描述**作者本机**的网络与工具链，与插件的普通使用者无关，可以整段跳过。
+
+22 端口在本网络被封，且 hosts 把 `github.com` 指向 `127.0.0.1`，所以 git 走 SSH 默认端口必然连到本机而失败。
+已生成一把 ed25519 密钥，并让 SSH 改走 GitHub 的 443 备用入口：
+
+- 私钥：`%USERPROFILE%\.ssh\id_ed25519`（**无口令**，便于免交互；需要更安全时可加口令并配 ssh-agent）
+- `~/.ssh/config`：`Host github.com` → `HostName ssh.github.com` / `Port 443` / `IdentityFile ~/.ssh/id_ed25519`
+  （`HostName` 会覆盖解析目标，因此同时绕开 22 端口封锁和 hosts 劫持）
+- 公钥指纹 `SHA256:bkSQYIEYm1lOKYQwuOC+hjBsufHypBkmuLbzwvM0YtE`，已添加到 GitHub
+
+**SSH key 与 PAT 不能互换**：`api.github.com` 是 HTTPS REST 接口，只接受 token；
+SSH key 只在 git 的 SSH 传输层生效。所以这套配置解决的是 clone/pull/push，插件仍需 PAT（见上文「配置令牌」）。
