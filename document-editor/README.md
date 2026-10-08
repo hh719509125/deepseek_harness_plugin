@@ -19,13 +19,29 @@
 
 ## 安装
 
+插件由 **agent** 安装（`plugin_manager` 是 agent 工具，用户不直接调用）。把这条**规格**发给你的 DSH agent：
+
 ```
-plugin_manager { action: "install_bundle", target: "<本插件目录的绝对路径>" }
+plugin_manager { action: "install_bundle", target: "github:hh719509125/deepseek_harness_plugin#path:/document-editor" }
 ```
 
-安装是热应用的，**但浏览器页面需要刷新一次**才能加载新的 client bundle。
+`#path:/document-editor` 是 pnpm 的 git 子目录规格，**不需要发布到 npm**，也不需要手动克隆。安装后会写进 profile 的 `package.json` 和 `dsh.profile.bundles` 并热应用。
 
-> ⚠️ 安装用的是 pnpm 的 `link:` 协议：profile 里只记录**路径**，不复制文件。装好之后不要移动或删除插件目录。
+- **权限**：`plugin_manager` 需要 `danger-full-access` 或当次批准。装进来的 Host 代码在工作区沙箱之外、以你的用户身份在本进程内执行，装之前请先读一遍 `index.js`。
+- **刷新页面**：安装是热应用的，但浏览器侧需要刷新一次才能加载新的 client bundle。
+
+想固定版本或离线时，改为克隆后按绝对路径安装：
+
+```
+git clone https://github.com/hh719509125/deepseek_harness_plugin.git
+plugin_manager { action: "install_bundle", target: "<克隆路径>/document-editor" }
+```
+
+> ⚠️ 路径装法下 profile 只记录路径、不复制文件，装好之后不要移动或删除那个目录。
+
+## 兼容性
+
+为 **DeepSeek Harness `0.2.0-rc.2`** 开发和验证。依赖两处 DSH 内部约定：Connection 的 `/api` 精确 Fetch 路由，以及预览的 `documentPreviews` 渲染器注册表。DSH 仍在 rc 阶段，这些**不承诺跨版本稳定**；装完看不到「编辑」渲染器就先确认 DSH 版本。
 
 ## 配置
 
@@ -71,8 +87,16 @@ create-or-overwrite 语义重新创建出来。
 
 ## 开发
 
-`cordis.patch.yml` 里的 `hmr.root` 指向插件目录（**本机绝对路径，换机器要改，或整条覆盖删掉**）。配好后
-`index.js`（Host 半边）改完**不重启就生效**；`client.js`（Client 半边）属于浏览器侧，改完刷新页面即可。
+插件包里的 [cordis.patch.yml](cordis.patch.yml) **刻意不含任何本机路径**：bundle patch 会应用到每个安装它的 profile，一条绝对路径会跟着跑到别人机器上。热重载要写到**安装方的 profile 层**（`<DSH_HOME>/profiles/<profile>/cordis.patch.yml`，优先级高于所有 bundle 层）：
+
+```yaml
+- id: hmr
+  name: '@deepseek-ai/dsh-hmr'
+  config:
+    root: ['.', '<本插件的绝对路径>']
+```
+
+配好后 `index.js`（Host 半边）改完**不重启就生效**；`client.js`（Client 半边）属于浏览器侧，改完刷新页面即可。
 
 日常用 `cordis.patch.yml` 里的 `extensions` / `markdown` / `maxBytes` 就够了，不必改代码。
 

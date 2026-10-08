@@ -17,22 +17,17 @@
         timeoutMs: 30000
         # Upper bound on the text one tool call returns to the model.
         maxOutputChars: 60000
-        # Extra CA certificates to trust for this process, as a PEM file. Set
-        # because this machine routes GitHub through a local TLS-intercepting
-        # accelerator (Steam++.Accelerator), whose CA Windows trusts but Node
-        # does not. A relative path resolves against the plugin directory.
-        # Delete this line if the accelerator is turned off; the path can also
-        # be given as NODE_EXTRA_CA_CERTS before DeepSeek Harness starts.
-        caFile: ./steampp-ca.pem
 
-# Let HMR watch this plugin's sources so an edit reloads the module instead of
-# requiring a process restart. Without a watched root, Node's ESM cache keeps
-# serving the module generation loaded at startup, so code changes are invisible
-# until DeepSeek Harness restarts. This is machine-specific (it names a local
-# directory); drop this entry if the package moves or HMR is unwanted.
-- id: hmr
-  name: '@deepseek-ai/dsh-hmr'
-  config:
-    root:
-      - '.'
-      - 'F:/插件/github-connector'
+# Machine-specific settings deliberately do not live here. A bundle patch is
+# applied to every profile that installs this package, so an absolute path or a
+# local certificate would follow other people onto their machines. The TLS
+# accelerator's CA file and this package's HMR watch root belong in the
+# installing profile's own cordis.patch.yml, which outranks every bundle layer:
+#
+#   - id: github-connector
+#     config:
+#       caFile: <absolute path to a PEM bundle>   # only behind a TLS proxy
+#   - id: hmr
+#     name: '@deepseek-ai/dsh-hmr'
+#     config:
+#       root: ['.', '<absolute path to this package>']

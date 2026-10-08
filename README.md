@@ -13,15 +13,43 @@
 
 ## 安装
 
-插件由 **agent** 安装（`plugin_manager` 是 agent 工具，用户不直接调用）。把要装的插件目录路径告诉你的 DSH agent：
+插件由 **agent** 安装（`plugin_manager` 是 agent 工具，用户不直接调用）。把下面这条**规格**发给你的 DSH agent 即可：
+
+| 插件 | 安装规格 |
+|---|---|
+| 文档编辑 | `github:hh719509125/deepseek_harness_plugin#path:/document-editor` |
+| GitHub 连接器 | `github:hh719509125/deepseek_harness_plugin#path:/github-connector` |
 
 ```
-plugin_manager { action: "install_bundle", target: "<本仓库路径>/document-editor" }
+plugin_manager { action: "install_bundle", target: "github:hh719509125/deepseek_harness_plugin#path:/document-editor" }
 ```
 
-它会依次：把包作为 `link:` 依赖写进 profile 的 `package.json` → 在该 profile 目录里运行 `pnpm` 安装 → 把包名加入 `dsh.profile.bundles` → 应用组合包自带的 patch 行。返回 `"application": "applied"` 即为生效，**首次安装是热应用的，不需要重启**（浏览器侧需要刷新一次页面）。
+`#path:/<子目录>` 是 pnpm 的 git 子目录规格，所以**不需要发布到 npm**，也不需要手动克隆。
 
-> ⚠️ 安装用的是 pnpm 的 `link:` 协议：profile 里只记录**路径**，不复制文件。所以装好之后**不要移动或删除插件目录**，否则插件会加载失败。
+agent 会依次：从 GitHub 取包 → 作为依赖写进 profile 的 `package.json` → 在 profile 目录里运行 `pnpm` → 把包名加入 `dsh.profile.bundles` → 应用组合包自带的 patch 行。返回 `"application": "applied"` 即为生效。
+
+两点注意：
+
+- **权限**：`plugin_manager` 的每个动作都需要 `danger-full-access` 或当次批准。装进来的 Host 代码在工作区沙箱之外、以你的用户身份在本进程内执行——和在 Harness 里跑 bash 是同一层信任，装之前请先读一遍源码。
+- **刷新页面**：安装是热应用的，但浏览器侧需要刷新一次才能加载新的 client bundle。
+
+**另一种装法（想固定版本或离线）**：克隆仓库，然后把插件目录的绝对路径作为规格：
+
+```
+git clone https://github.com/hh719509125/deepseek_harness_plugin.git
+plugin_manager { action: "install_bundle", target: "<克隆路径>/document-editor" }
+```
+
+> ⚠️ 安装用的是 pnpm 的 `link:`（路径装法）或 git 依赖（规格装法）。**路径装法**下 profile 只记录路径、不复制文件，所以装好之后不要移动或删除那个目录。
+
+## 兼容性
+
+这些插件是为 **DeepSeek Harness `0.2.0-rc.2`** 开发和验证的，并且依赖 DSH 的两处内部约定：
+
+- 文档编辑：Connection 的 `/api` 精确 Fetch 路由，以及预览的 `documentPreviews` 渲染器注册表
+- GitHub 连接器：`ctx.tools` 工具注册表（较稳定）
+
+DSH 仍在 rc 阶段，这些内部约定**不承诺跨版本稳定**。插件刻意没有声明 `peerDependencies`——官方包声明的是 `@deepseek-ai/cordis`，而声明错的 peer 会让插件管理器**在安装前就拒绝**，那比装完再报错更难排查。所以：装完如果某个工具/渲染器不出现，先确认 DSH 版本。
 
 ## 目录结构
 

@@ -85,12 +85,13 @@
         # Refuse a buffer larger than this many UTF-8 bytes.
         maxBytes: 8388608
 
-# Let HMR watch this plugin's sources so an edit reloads the module instead of
-# requiring a process restart. This is machine-specific (it names a local
-# directory); drop this entry if the package moves or HMR is unwanted.
-- id: hmr
-  name: '@deepseek-ai/dsh-hmr'
-  config:
-    root:
-      - '.'
-      - 'F:/插件/document-editor'
+# Machine-specific settings deliberately do not live here. A bundle patch is
+# applied to every profile that installs this package, so an absolute path would
+# follow other people onto their machines. To hot-reload this package's sources
+# while developing, put the watch root in the installing profile's own
+# cordis.patch.yml, which outranks every bundle layer:
+#
+#   - id: hmr
+#     name: '@deepseek-ai/dsh-hmr'
+#     config:
+#       root: ['.', '<absolute path to this package>']

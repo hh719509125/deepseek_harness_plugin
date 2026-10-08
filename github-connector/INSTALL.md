@@ -24,39 +24,58 @@
 
 ---
 
-## 二、改掉两处「机器相关」的配置
+## 二、机器相关的配置（只在需要时加）
 
-打开 `cordis.patch.yml`，这两项是为**当前这台机器**写的，换机器必须处理：
+插件包自带的 `cordis.patch.yml` **刻意不含任何本机路径**：bundle patch 会应用到每个安装它的
+profile，一条绝对路径或一份本机证书会跟着跑到别人机器上。所以下面两项都不在包里，需要时写到
+**你自己 profile 的 patch 层**：
+
+```
+<DSH_HOME>/profiles/<profile>/cordis.patch.yml
+```
+
+它的优先级高于所有 bundle 层，而且不会被发布出去。
 
 ```yaml
 - id: github-connector
   config:
-    caFile: ./steampp-ca.pem          # ← 见下
+    caFile: /绝对/路径/your-ca.pem     # 只在 TLS 中间人环境下需要，见下
 - id: hmr
+  name: '@deepseek-ai/dsh-hmr'
   config:
-    root: ['.', 'F:/插件/github-connector']   # ← 见下
+    root: ['.', '/放置你的插件的绝对路径/github-connector']   # 只在开发时需要
 ```
 
 **`caFile`** —— 只有在「GitHub 域名被 hosts 指向本机、由 TLS 中间人代理」时才需要
 （本机是瓦特工具箱 / Steam++.Accelerator）。判断方法：`Resolve-DnsName api.github.com`
 返回 `127.0.0.1` 就是这种环境。
 
-- 普通网络：**删掉 `caFile` 这一行**（连同 `steampp-ca.pem` 一起删掉也行）
-- 同样是中间人环境：保留，并按需替换 `steampp-ca.pem` 为你那边的 CA
+- 普通网络：**不需要这一项**，什么都不用加
+- 中间人环境：加上，并把路径指向你那边的 CA
 
-> 留着指向不存在的文件不会让插件崩溃：加载时会记一条警告，随后请求会因证书不受信而失败。
+> 指向不存在的文件不会让插件崩溃：加载时会记一条警告，随后请求会因证书不受信而失败。
 
-**`hmr.root`** —— 让改代码后热重载，而不是每次重启进程。第二个元素是**本机的绝对路径**。
+**`hmr.root`** —— 只有在你**改这个插件的源码**、想让改动热重载时才需要。
 
-- 换成你放置目录的绝对路径（用正斜杠，例如 `D:/plugins/github-connector`）
-- 不需要热重载：**整条 `hmr` 覆盖删掉**
+- 加上你放置目录的绝对路径（用正斜杠，例如 `D:/plugins/github-connector`）
+- 不需要热重载：**整条 `hmr` 覆盖都不要加**
 
 ---
 
 ## 三、安装到 profile
 
-安装动作由 **agent** 完成（`plugin_manager` 是 agent 工具，用户不直接调用）。把插件目录路径告诉
-你的 DSH agent，让它执行：
+安装动作由 **agent** 完成（`plugin_manager` 是 agent 工具，用户不直接调用）。把这条**规格**发给
+你的 DSH agent：
+
+```
+plugin_manager { action: "install_bundle", target: "github:hh719509125/deepseek_harness_plugin#path:/github-connector" }
+```
+
+`#path:/github-connector` 是 pnpm 的 git 子目录规格，所以**不需要发布到 npm，也不需要手动克隆**。
+`plugin_manager` 需要 `danger-full-access` 或当次批准；装进来的 Host 代码在工作区沙箱之外、以你的
+用户身份在本进程内执行，装之前请先读一遍 `index.js`。
+
+想固定版本或离线，就用上面第一步克隆下来的目录，把**绝对路径**当规格：
 
 ```
 plugin_manager { action: "install_bundle", target: "D:\\plugins\\github-connector" }
@@ -138,16 +157,26 @@ Start-Process "DeepSeek Harness.exe"
 plugin_manager { action: "remove_bundle", target: "@local/dsh-plugin-github" }
 ```
 
-它会从 `dsh.profile.bundles` 移除并运行 `pnpm remove`。`cordis.patch.yml` 里那两条覆盖随包一起不再生效。
+它会从 `dsh.profile.bundles` 移除并运行 `pnpm remove`。你在 profile patch 里加的 `caFile` /
+`hmr` 覆盖要手动删掉——它们不属于插件包，所以不会随卸载一起消失。
 
 ---
 
 ## 迁移清单（换机器 / 给别人用）
 
-1. 复制 `github-connector` 目录到目标机器的稳定位置
-2. 改 `cordis.patch.yml`：`caFile` 按需保留或删除；`hmr.root` 改成目标机路径或删除
-3. 让 agent 执行 `install_bundle`，`target` 填目标路径
-4. 配令牌（设置 → GitHub，或写 `.credentials.yaml`）
+**别人用**：直接给出 git 子目录规格就行，不需要复制目录：
+
+```
+plugin_manager { action: "install_bundle", target: "github:hh719509125/deepseek_harness_plugin#path:/github-connector" }
+```
+
+**换到你自己另一台机器**：
+
+1. 复制 `github-connector` 目录到目标机器的稳定位置（或者用上面的规格装）
+2. 让 agent 执行 `install_bundle`，`target` 填目标路径
+3. 只有需要时才在**目标机 profile 的 patch 层**加 `caFile`（TLS 中间人环境）或 `hmr.root`（改源码热重载）
+4. 配令牌（设置 → GitHub 页，或写 `.credentials.yaml`）
 5. 验证 `github_api` → `/user`
 
-包名 `@local/dsh-plugin-github` 是私有名，**不需要也不应该发布到 npm**。
+包名 `@local/dsh-plugin-github` 是私有名，**不需要也不应该发布到 npm** —— 安装走 pnpm 的 git
+子目录规格，不经过注册表。
