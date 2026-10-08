@@ -1,0 +1,98 @@
+# 文档编辑（Document Editor）
+
+在右侧栏的**文档预览**里直接编辑文本文件并保存。
+
+内置的文档预览是只读的（它的 README 把 "Preview, not editing" 写成明确的已知取舍），
+`workspaceFiles` 这个 Remote 也**完全没有写入方法**。本插件补上这条写入通路，并把编辑器
+注册成预览自己的一个渲染器，所以不需要替换任何内置渲染器。
+
+---
+
+## 效果
+
+- 打开 `.txt`、代码、`.json`、`.yaml` 等文本文件时，**默认就是这个编辑器**（原来的「纯文本」仍在下拉里可切回）
+- 打开 `.md` 时**仍然渲染 Markdown**，下拉里多一项「编辑源码」
+- 编辑器上方一条窄工具条：文件路径、保存状态、**保存**、**撤销改动**
+- **Ctrl+S** 保存；有未保存改动时关页面会拦一下
+- 冲突保护：保存时带上打开那一刻的文件版本，磁盘上变了就返回 409 提示，**不会静默覆盖**
+- 行尾保留：CRLF 文件存回去仍是 CRLF，并补回结尾换行 —— 未改动的缓冲区保存后磁盘内容**逐字节不变**
+
+## 安装
+
+```
+plugin_manager { action: "install_bundle", target: "<本插件目录的绝对路径>" }
+```
+
+安装是热应用的，**但浏览器页面需要刷新一次**才能加载新的 client bundle。
+
+> ⚠️ 安装用的是 pnpm 的 `link:` 协议：profile 里只记录**路径**，不复制文件。装好之后不要移动或删除插件目录。
+
+## 配置
+
+都在 [cordis.patch.yml](cordis.patch.yml) 的 `document-editor` 那一行：
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `extensions` | 65 个后缀 | 哪些后缀**默认**进编辑器。刻意不含 `md`/`html`/`svg`/`csv`/图片/PDF —— 它们各自有更好用的内置渲染器 |
+| `markdown` | `true` | 是否为 `.md` 额外提供「编辑源码」渲染器（不改变 Markdown 仍是默认这一事实） |
+| `maxBytes` | `8388608` | 单次保存的 UTF-8 字节上限，超过返回 413 |
+
+Host 会把这份配置注入页面（`__DSH_DOC_EDITOR_CONFIG__`），改完刷新页面生效。
+
+## 工作原理
+
+写入不是走 Remote——`@deepseek-ai/dsh-api-remotes` 把 Client 的 `ctx.remote` 命名空间
+**固定在构建期**，插件加不了新命名空间。所以插件改为在 Connection 的 `/api` 桥上**认领一条
+exact Fetch 路由**：
+
+```
+ctx.connection.fetch.register({ path: '/api/dsh-doc-editor', methods: ['POST'], ... })
+```
+
+Connection 自己持有 `/api` 前缀路由，先跑信任闸（loopback/Origin，失败 403）和浏览器
+session cookie 鉴权（失败 401），再交给 shared fetch handler；handler **先查 exact 路由表**。
+所以这条路由天然带着内置鉴权，插件一行信任检查都不用写。
+
+写入落到 `ctx.fs.writeText`，并带上**该 Session 的 standing sandbox policy**——用和
+`dsh-tool-fs` 完全一样的方式解析，所以就地保存受的约束和 agent 自己的 `write` 工具一致，
+不会成为绕过文件沙箱的口子。
+
+保存前会 `stat` 一次：**只保存已存在的文件**。目标不见了返回 404，而不是被
+create-or-overwrite 语义重新创建出来。
+
+## 边界
+
+| 情况 | 行为 |
+|---|---|
+| 工作区内的文本文件 | ✅ 正常 |
+| 工作区**外**的文件 | 读得到，**写被沙箱拦**（除非该 Session 是 full-access） |
+| `.docx` / `.xlsx` / `.pptx` | ❌ 预览是转 PDF，浏览器里没有可编辑文档模型。要编辑得在 Host 用 python-docx/openpyxl 做结构化写回 |
+| 单页读不完的大文件 | ⚠️ 保存**停用**并给出说明。`text-pages` 是一次一页读的，回写会把后面的内容截断，所以宁可不让存 |
+
+## 开发
+
+`cordis.patch.yml` 里的 `hmr.root` 指向插件目录（**本机绝对路径，换机器要改，或整条覆盖删掉**）。配好后
+`index.js`（Host 半边）改完**不重启就生效**；`client.js`（Client 半边）属于浏览器侧，改完刷新页面即可。
+
+日常用 `cordis.patch.yml` 里的 `extensions` / `markdown` / `maxBytes` 就够了，不必改代码。
+
+**改动怎么验。** 写入通路必须带鉴权地打真实路由，而 DSH 的 browser-session cookie 签名是
+`dsh-client-connection` 的内部实现、并未承诺稳定，所以这里不附带测试。开发时用的是本机探针，
+覆盖下面这些行为：
+
+| 类别 | 覆盖 |
+|---|---|
+| 鉴权 | 带会话 cookie → 200；无 cookie → 401 |
+| 写入 | 内容正确落盘；返回新 version |
+| 行尾 | CRLF 文件存回仍是 CRLF 且补回结尾换行；LF 文件保持 LF |
+| 幂等 | 未改动缓冲区保存后磁盘内容**逐字节不变** |
+| 冲突 | 过期 version → 409 `FS_STALE_VERSION`，且文件原封不动 |
+| 缺失目标 | → 404，且**不会被重新创建** |
+| 坏请求 | 请求体不是合法 JSON/对象 → 400 |
+| 投递 | 页面 boot 载荷列出 client bundle，且该 bundle 能构建、内容含渲染器注册 |
+
+## 卸载
+
+```
+plugin_manager { action: "remove_bundle", target: "@local/dsh-plugin-document-editor" }
+```
